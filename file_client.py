@@ -4,6 +4,7 @@ from tkinter import filedialog, simpledialog, messagebox
 import os
 
 class FileClientApp:
+    #---------------------------------------------------------------------GUI part-----------------------------------------------
     def __init__(self, master):
         self.master = master
         self.master.title("File Client")
@@ -36,11 +37,11 @@ class FileClientApp:
         self.download_button = tk.Button(master, text="Download File", command=self.download_file, state=tk.DISABLED)
         self.download_button.grid(row=6, column=0, columnspan=2)
 
-        self.download_button = tk.Button(master, text="Delete File", command=self.delete_file, state=tk.DISABLED)
-        self.download_button.grid(row=6, column=0, columnspan=2)
+        self.delete_button = tk.Button(master, text="Delete File", command=self.delete_file, state=tk.DISABLED)
+        self.delete_button.grid(row=7, column=0, columnspan=2)
 
         self.disconnect_button = tk.Button(master, text="Disconnect", command=self.disconnect, state=tk.DISABLED)
-        self.disconnect_button.grid(row=7, column=0, columnspan=2)
+        self.disconnect_button.grid(row=8, column=0, columnspan=2)
 
         self.activity_list = tk.Listbox(master, width=50)
         self.activity_list.grid(row=8, column=0, columnspan=2)
