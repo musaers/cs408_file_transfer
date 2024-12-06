@@ -1,187 +1,214 @@
 import socket
 import tkinter as tk
-from tkinter import filedialog, simpledialog, messagebox
+from tkinter import filedialog, simpledialog, messagebox, ttk
 import os
+import json
+
 
 class FileClientApp:
-    #---------------------------------------------------------------------GUI part-----------------------------------------------
     def __init__(self, master):
         self.master = master
         self.master.title("File Client")
+        self.master.geometry("600x500")
 
-        self.client_socket = None
-        self.connected = False
+        # Connection Frame
+        conn_frame = ttk.LabelFrame(master, text="Server Connection")
+        conn_frame.pack(padx=10, pady=5, fill="x")
 
-        # GUI setup
-        tk.Label(master, text="Client Name:").grid(row=0, column=0)
-        self.name_entry = tk.Entry(master)
-        self.name_entry.grid(row=0, column=1)
+        ttk.Label(conn_frame, text="Name:").grid(row=0, column=0, padx=5, pady=5)
+        self.name_entry = ttk.Entry(conn_frame)
+        self.name_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        tk.Label(master, text="Server IP:").grid(row=1, column=0)
-        self.ip_entry = tk.Entry(master)
-        self.ip_entry.grid(row=1, column=1)
+        ttk.Label(conn_frame, text="Host:").grid(row=1, column=0, padx=5, pady=5)
+        self.host_entry = ttk.Entry(conn_frame)
+        self.host_entry.insert(0, "localhost")
+        self.host_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        tk.Label(master, text="Server Port:").grid(row=2, column=0)
-        self.port_entry = tk.Entry(master)
-        self.port_entry.grid(row=2, column=1)
+        ttk.Label(conn_frame, text="Port:").grid(row=2, column=0, padx=5, pady=5)
+        self.port_entry = ttk.Entry(conn_frame)
+        self.port_entry.insert(0, "5000")
+        self.port_entry.grid(row=2, column=1, padx=5, pady=5)
 
-        self.connect_button = tk.Button(master, text="Connect", command=self.connect_to_server)
-        self.connect_button.grid(row=3, column=0, columnspan=2)
+        self.connect_button = ttk.Button(conn_frame, text="Connect", command=self.connect)
+        self.connect_button.grid(row=3, column=0, columnspan=2, pady=10)
 
-        self.upload_button = tk.Button(master, text="Upload File", command=self.upload_file, state=tk.DISABLED)
-        self.upload_button.grid(row=4, column=0, columnspan=2)
+        # Actions Frame
+        actions_frame = ttk.LabelFrame(master, text="Actions")
+        actions_frame.pack(padx=10, pady=5, fill="x")
 
-        self.list_button = tk.Button(master, text="List Files", command=self.list_files, state=tk.DISABLED)
-        self.list_button.grid(row=5, column=0, columnspan=2)
+        self.upload_button = ttk.Button(actions_frame, text="Upload File", command=self.upload_file, state='disabled')
+        self.upload_button.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.download_button = tk.Button(master, text="Download File", command=self.download_file, state=tk.DISABLED)
-        self.download_button.grid(row=6, column=0, columnspan=2)
+        self.download_button = ttk.Button(actions_frame, text="Download File", command=self.download_file,
+                                          state='disabled')
+        self.download_button.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.delete_button = tk.Button(master, text="Delete File", command=self.delete_file, state=tk.DISABLED)
-        self.delete_button.grid(row=7, column=0, columnspan=2)
+        self.list_button = ttk.Button(actions_frame, text="List Files", command=self.list_files, state='disabled')
+        self.list_button.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.disconnect_button = tk.Button(master, text="Disconnect", command=self.disconnect, state=tk.DISABLED)
-        self.disconnect_button.grid(row=8, column=0, columnspan=2)
+        self.delete_button = ttk.Button(actions_frame, text="Delete File", command=self.delete_file, state='disabled')
+        self.delete_button.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.activity_list = tk.Listbox(master, width=50)
-        self.activity_list.grid(row=8, column=0, columnspan=2)
+        # Log Frame
+        log_frame = ttk.LabelFrame(master, text="Activity Log")
+        log_frame.pack(padx=10, pady=5, fill="both", expand=True)
 
-    def connect_to_server(self):
+        self.log_text = tk.Text(log_frame, height=20)
+        self.log_text.pack(padx=5, pady=5, fill="both", expand=True)
+
+        self.socket = None
+
+    def log_message(self, message):
+        self.log_text.insert(tk.END, f"{message}\n")
+        self.log_text.see(tk.END)
+
+    def connect(self):
         try:
-            self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.client_socket.connect((self.ip_entry.get(), int(self.port_entry.get())))
-            self.client_socket.send(self.name_entry.get().encode())
-            response = self.client_socket.recv(1024).decode()
-            if "ERROR" in response:
-                messagebox.showerror("Connection Error", response)
+            name = self.name_entry.get().strip()
+            if not name:
+                messagebox.showerror("Error", "Please enter your name")
                 return
-            self.connected = True
-            self.activity_list.insert(tk.END, "Connected to server.")
-            self.upload_button.config(state=tk.NORMAL)
-            self.list_button.config(state=tk.NORMAL)
-            self.download_button.config(state=tk.NORMAL)
-            self.disconnect_button.config(state=tk.NORMAL)
+
+            host = self.host_entry.get().strip()
+            port = int(self.port_entry.get())
+
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.connect((host, port))
+
+            # Send client name
+            self.socket.send(name.encode())
+
+            # Enable buttons
+            self.upload_button.config(state='normal')
+            self.download_button.config(state='normal')
+            self.list_button.config(state='normal')
+            self.delete_button.config(state='normal')
+            self.connect_button.config(state='disabled')
+
+            self.log_message(f"Connected to server at {host}:{port}")
+
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            messagebox.showerror("Error", f"Connection failed: {str(e)}")
+            self.log_message(f"Connection error: {str(e)}")
 
     def upload_file(self):
-        if not self.connected:
+        file_path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
+        if not file_path:
             return
-        filepath = filedialog.askopenfilename()
-        if not filepath:
-            return
-        filename = os.path.basename(filepath)
-        filesize = os.path.getsize(filepath)
-        self.client_socket.send(f"UPLOAD {filename}".encode())
-        self.client_socket.recv(1024)  # Wait for READY
-        self.client_socket.send(str(filesize).encode())
-        with open(filepath, "rb") as f:
-            while chunk := f.read(4096):
-                self.client_socket.sendall(chunk)
-        self.activity_list.insert(tk.END, f"Uploaded: {filename}")
+
+        try:
+            filename = os.path.basename(file_path)
+
+            # Send upload command
+            self.socket.send(json.dumps({
+                "action": "upload",
+                "filename": filename
+            }).encode())
+
+            # Send file size and data
+            file_size = os.path.getsize(file_path)
+            self.socket.send(str(file_size).encode().ljust(10))
+
+            with open(file_path, 'rb') as f:
+                while data := f.read(4096):
+                    self.socket.send(data)
+
+            response = self.socket.recv(1024).decode()
+            if response == "SUCCESS":
+                self.log_message(f"File {filename} uploaded successfully")
+            else:
+                self.log_message(f"Upload failed: {response}")
+
+        except Exception as e:
+            self.log_message(f"Upload error: {str(e)}")
 
     def list_files(self):
-        """Sunucudaki mevcut dosyaları istemci GUI'de listeler."""
-        if not self.verify_connection():
-            return
-
         try:
-            # LIST komutunu gönder
-            self.client_socket.send("LIST".encode())
+            self.socket.send(json.dumps({"action": "list"}).encode())
+            response = self.socket.recv(4096).decode()
+            files = json.loads(response)
 
-            # Sunucudan dosya listesini al
-            file_list = self.client_socket.recv(4096).decode()
-            if file_list == "No files available":
-                self.activity_list.insert(tk.END, "No files available on the server")
-            else:
-                self.activity_list.insert(tk.END, "Available files:\n" + file_list)
+            # Show files in a new window
+            top = tk.Toplevel(self.master)
+            top.title("Server Files")
+            top.geometry("300x400")
+
+            listbox = tk.Listbox(top)
+            listbox.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+
+            for file in files:
+                listbox.insert(tk.END, file)
+
+            self.log_message("Retrieved file list from server")
 
         except Exception as e:
-            messagebox.showerror("List Error", str(e))
-            self.activity_list.insert(tk.END, f"Error retrieving file list: {e}")
+            self.log_message(f"List error: {str(e)}")
 
     def download_file(self):
-        """Dosya indirme işlemini yönetir."""
-        if not self.connected:
-            return
-
-        # İndirilmek istenen dosyanın adını kullanıcıdan al
-        filename = simpledialog.askstring("Download File", "Enter filename:")
+        filename = simpledialog.askstring("Download", "Enter the filename to download:")
         if not filename:
             return
 
-        # Dosyayı nereye kaydedeceğini sor
-        save_path = filedialog.asksaveasfilename(title="Save Downloaded File As", initialfile=filename)
-        if not save_path:
-            return
-
         try:
-            # DOWNLOAD komutunu gönder
-            self.client_socket.send(f"DOWNLOAD {filename}".encode())
+            # Send download command
+            self.socket.send(json.dumps({
+                "action": "download",
+                "filename": filename
+            }).encode())
 
-            # Sunucudan dosya boyutunu al
-            response = self.client_socket.recv(1024).decode()
-            if response == "FILE_NOT_FOUND":
-                self.activity_list.insert(tk.END, f"Download failed: File {filename} not found.")
+            # Receive file size
+            file_size = int(self.socket.recv(10).strip())
+
+            # Get save location
+            save_path = filedialog.asksaveasfilename(
+                initialfile=filename,
+                defaultextension=".txt",
+                filetypes=[("Text Files", "*.txt")]
+            )
+            if not save_path:
                 return
 
-            # Dosya boyutunu doğrula
-            filesize = int(response)
-            self.client_socket.send("READY".encode())  # Dosyayı almaya hazır olduğumuzu belirt
-
-            # Dosyayı kaydet
-            with open(save_path, "wb") as f:
-                remaining = filesize
-                while remaining > 0:
-                    chunk = self.client_socket.recv(min(4096, remaining))
-                    if not chunk:
+            # Receive and save file
+            received = 0
+            with open(save_path, 'wb') as f:
+                while received < file_size:
+                    data = self.socket.recv(min(4096, file_size - received))
+                    if not data:
                         break
-                    f.write(chunk)
-                    remaining -= len(chunk)
+                    f.write(data)
+                    received += len(data)
 
-            self.activity_list.insert(tk.END, f"Downloaded file: {filename} to {save_path}")
+            self.log_message(f"File {filename} downloaded successfully")
 
         except Exception as e:
-            messagebox.showerror("Download Error", str(e))
-            self.activity_list.insert(tk.END, f"Error during download: {e}")
+            self.log_message(f"Download error: {str(e)}")
 
     def delete_file(self):
-        """Sunucudaki bir dosyayı siler."""
-        if not self.verify_connection():
-            return
-
-        # Silinmek istenen dosyanın adını kullanıcıdan al
-        filename = simpledialog.askstring("Delete File", "Enter the filename to delete:")
+        filename = simpledialog.askstring("Delete", "Enter the filename to delete:")
         if not filename:
             return
 
         try:
-            # DELETE komutunu gönder
-            self.client_socket.send(f"DELETE {filename}".encode())
+            self.socket.send(json.dumps({
+                "action": "delete",
+                "filename": filename
+            }).encode())
 
-            # Sunucudan yanıt bekle
-            response = self.client_socket.recv(1024).decode()
-
-            # Yanıta göre işlem sonucunu GUI'ye yaz
-            if response == "DELETE_SUCCESS":
-                self.activity_list.insert(tk.END, f"Deleted file: {filename}")
-            elif response == "FILE_NOT_FOUND":
-                self.activity_list.insert(tk.END, f"Failed to delete file: {filename} (File not found)")
+            response = self.socket.recv(1024).decode()
+            if response == "SUCCESS":
+                self.log_message(f"File {filename} deleted successfully")
             else:
-                self.activity_list.insert(tk.END, f"Failed to delete file: {filename} (Unknown error)")
+                self.log_message(f"Delete failed: {response}")
 
         except Exception as e:
-            messagebox.showerror("Delete Error", str(e))
-            self.activity_list.insert(tk.END, f"Error during file deletion: {e}")
+            self.log_message(f"Delete error: {str(e)}")
 
-    def disconnect(self):
-        if self.connected:
-            self.client_socket.send("DISCONNECT".encode())
-            self.client_socket.close()
-            self.connected = False
-            self.activity_list.insert(tk.END, "Disconnected.")
 
-if __name__ == "__main__":
+def main():
     root = tk.Tk()
     app = FileClientApp(root)
     root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
