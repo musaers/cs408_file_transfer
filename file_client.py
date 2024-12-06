@@ -29,8 +29,11 @@ class FileClientApp:
         self.port_entry.insert(0, "5000")
         self.port_entry.grid(row=2, column=1, padx=5, pady=5)
 
-        self.connect_button = ttk.Button(conn_frame, text="Connect", command=self.connect)
+        self.connect_button = ttk.Button(conn_frame, text="Connect", command = self.connect)
         self.connect_button.grid(row=3, column=0, columnspan=2, pady=10)
+
+        self.disconnect_button = ttk.Button(conn_frame, text = "Disconnect", command = self.disconnect, state = 'disabled')
+        self.disconnect_button.grid(row = 3, column = 11, columnspan = 2, pady = 10)
 
         # Actions Frame
         actions_frame = ttk.LabelFrame(master, text="Actions")
@@ -39,8 +42,7 @@ class FileClientApp:
         self.upload_button = ttk.Button(actions_frame, text="Upload File", command=self.upload_file, state='disabled')
         self.upload_button.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.download_button = ttk.Button(actions_frame, text="Download File", command=self.download_file,
-                                          state='disabled')
+        self.download_button = ttk.Button(actions_frame, text="Download File", command=self.download_file, state='disabled')
         self.download_button.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.list_button = ttk.Button(actions_frame, text="List Files", command=self.list_files, state='disabled')
@@ -61,6 +63,8 @@ class FileClientApp:
     def log_message(self, message):
         self.log_text.insert(tk.END, f"{message}\n")
         self.log_text.see(tk.END)
+
+###################################################################################################################################################################################################################
 
     def connect(self):
         try:
@@ -84,12 +88,40 @@ class FileClientApp:
             self.list_button.config(state='normal')
             self.delete_button.config(state='normal')
             self.connect_button.config(state='disabled')
+            self.disconnect_button.config(state = 'normal')
 
             self.log_message(f"Connected to server at {host}:{port}")
 
         except Exception as e:
             messagebox.showerror("Error", f"Connection failed: {str(e)}")
             self.log_message(f"Connection error: {str(e)}")
+
+###################################################################################################################################################################################################################
+
+    def disconnect(self):
+        try:
+            if self.socket:
+                self.socket.close()
+                self.socket= None            
+                self.log_message(f"Disconnected from server.")
+
+
+                # disable buttons
+                self.upload_button.config(state='disabled')
+                self.download_button.config(state='disabled')
+                self.list_button.config(state='disabled')
+                self.delete_button.config(state='disabled')
+                self.connect_button.config(state='normal')
+                self.disconnect_button.config(state = 'disabled')
+
+        except Exception as e:
+            self.log_message(f"Disconnect error: {str(e)}")
+
+
+        
+
+
+###################################################################################################################################################################################################################
 
     def upload_file(self):
         file_path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
@@ -122,6 +154,8 @@ class FileClientApp:
         except Exception as e:
             self.log_message(f"Upload error: {str(e)}")
 
+###################################################################################################################################################################################################################
+
     def list_files(self):
         try:
             self.socket.send(json.dumps({"action": "list"}).encode())
@@ -143,6 +177,8 @@ class FileClientApp:
 
         except Exception as e:
             self.log_message(f"List error: {str(e)}")
+
+###################################################################################################################################################################################################################
 
     def download_file(self):
         filename = simpledialog.askstring("Download", "Enter the filename to download:")
@@ -182,6 +218,8 @@ class FileClientApp:
 
         except Exception as e:
             self.log_message(f"Download error: {str(e)}")
+
+###################################################################################################################################################################################################################
 
     def delete_file(self):
         filename = simpledialog.askstring("Delete", "Enter the filename to delete:")
