@@ -28,8 +28,11 @@ class FileServerApp:
         self.browse_button = ttk.Button(config_frame, text="Browse", command=self.browse_folder)
         self.browse_button.grid(row=1, column=2, padx=5, pady=5)
 
-        self.start_button = ttk.Button(config_frame, text="Start Server", command=self.start_server)
+        self.start_button = ttk.Button(config_frame, text="Start Server", command = self.start_server, state = 'normal')
         self.start_button.grid(row=2, column=0, columnspan=3, pady=10)
+
+        self.end_button = ttk.Button(config_frame, text = "End Server", command = self.end_server, state = 'disabled')
+        self.end_button.grid(row=2, column=4, columnspan=3, pady=10)
 
         # Log Frame
         log_frame = ttk.LabelFrame(master, text="Server Log")
@@ -42,6 +45,7 @@ class FileServerApp:
         self.server_socket = None
         self.storage_folder = ""
         self.is_running = False
+        self.active_clients = []                  #we need them while we terminating the server
 
     def log_message(self, message):
         self.log_text.insert(tk.END, f"{message}\n")
@@ -75,12 +79,36 @@ class FileServerApp:
             self.start_button.config(state='disabled')
             self.log_message(f"Server started on port {port}")
 
+            self.end_button.config(state = 'normal')
+            self.start_button.config(state = 'disabled')
+            # buraya bir browse folder için de ekleyebiliriz
             # Start accepting clients in a separate thread
             threading.Thread(target=self.accept_clients, daemon=True).start()
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to start server: {str(e)}")
             self.log_message(f"Error: {str(e)}")
+
+###################################################################################################################################################################################################################
+    def end_server(self):
+        try:
+            message = json.dumps({"action": "server_ended"}).encode()
+            for client_socket in self.active_clients:  # You'll need to maintain this list
+                try:
+                    client_socket.send(message)
+                except:
+                    pass
+                
+            self.is_running = False
+            if self.server_socket:
+                self.server_socket.close()
+
+            self.start_button.config(state='normal')
+            self.end_button.config(state='disabled')
+            self.log_message("Server stopped...")
+
+        except Exception as e:
+            self.log_message(f"Error stopping server: {str(e)}")
 
 ###################################################################################################################################################################################################################
 
@@ -100,6 +128,7 @@ class FileServerApp:
         try:
             client_name = client_socket.recv(1024).decode()
             self.log_message(f"Client: [{client_name}] connected from {address}")
+            self.active_clients.append(client_socket)   # add new connected client
 
             while True:
                 try:
@@ -127,6 +156,7 @@ class FileServerApp:
             self.log_message(f"Error handling client {client_name}: {str(e)}")
 
         finally:
+            self.active_clients.remove(client_socket) #its not active anymore
             client_socket.close()
             self.log_message(f"Connection closed for client [{client_name}] ({address})")
 

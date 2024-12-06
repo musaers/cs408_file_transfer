@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import filedialog, simpledialog, messagebox, ttk
 import os
 import json
+import threading
 
 
 class FileClientApp:
@@ -91,10 +92,32 @@ class FileClientApp:
             self.disconnect_button.config(state = 'normal')
 
             self.log_message(f"Connected to server at {host}:{port}")
+            threading.Thread(target=self.listen_for_server_end, daemon=True).start()      #oopen a thread to listen if server ends, then if it ends a server message will be shown in the box
 
         except Exception as e:
             messagebox.showerror("Error", f"Connection failed: {str(e)}")
             self.log_message(f"Connection error: {str(e)}")
+
+###################################################################################################################################################################################################################
+
+    def listen_for_server_end(self):
+        while self.socket:
+            try:
+                data = self.socket.recv(1024).decode()
+                if not data:
+                    break
+                message = json.loads(data)
+                if message.get("action") == "server_ended":
+                    self.master.after(0, self.handle_server_end)
+                    break
+            except:
+                break
+    
+    def handle_server_end(self):
+        self.log_message(f"Server has stopped...")         #just show a message and disconnect
+        self.socket.close()
+        self.socket= None            
+        
 
 ###################################################################################################################################################################################################################
 
@@ -117,9 +140,25 @@ class FileClientApp:
         except Exception as e:
             self.log_message(f"Disconnect error: {str(e)}")
 
+###################################################################################################################################################################################################################
 
-        
-
+    def receive_messages(self):
+        while self.socket:
+            try:
+                data = self.socket.recv(1024).decode()
+                if not data:
+                    break
+                
+                try:
+                    message = json.loads(data)
+                    if message.get("action") == "server_ended":
+                        messagebox.showinfo("Server Status", "Server has ended the connection")
+                        self.disconnect()
+                        break
+                except json.JSONDecodeError:
+                    pass
+            except:
+                break       
 
 ###################################################################################################################################################################################################################
 
