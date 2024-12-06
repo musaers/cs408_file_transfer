@@ -54,6 +54,8 @@ class FileServerApp:
             self.folder_label.config(text=folder)
             self.log_message(f"Storage folder set to: {folder}")
 
+###################################################################################################################################################################################################################
+
     def start_server(self):
         if not self.storage_folder:
             messagebox.showerror("Error", "Please select a storage folder first")
@@ -80,25 +82,27 @@ class FileServerApp:
             messagebox.showerror("Error", f"Failed to start server: {str(e)}")
             self.log_message(f"Error: {str(e)}")
 
+###################################################################################################################################################################################################################
+
     def accept_clients(self):
         while self.is_running:
             try:
                 client_socket, address = self.server_socket.accept()
                 threading.Thread(target=self.handle_client, args=(client_socket, address), daemon=True).start()
-                self.log_message(f"New connection from {address}")
+                # self.log_message(f"New connection from {address}")
             except Exception as e:
                 if self.is_running:
                     self.log_message(f"Error accepting client: {str(e)}")
 
+###################################################################################################################################################################################################################
+
     def handle_client(self, client_socket, address):
         try:
-            # Receive client name
             client_name = client_socket.recv(1024).decode()
-            self.log_message(f"Client {client_name} connected from {address}")
+            self.log_message(f"Client: [{client_name}] connected from {address}")
 
             while True:
                 try:
-                    # Receive command
                     data = client_socket.recv(1024).decode()
                     if not data:
                         break
@@ -107,38 +111,40 @@ class FileServerApp:
                     action = command.get('action')
 
                     if action == 'upload':
-                        self.handle_upload(client_socket, command)
+                        self.handle_upload(client_socket, command, client_name)
                     elif action == 'list':
-                        self.handle_list(client_socket)
+                        self.handle_list(client_socket, client_name)
                     elif action == 'download':
-                        self.handle_download(client_socket, command)
+                        self.handle_download(client_socket, command, client_name)
                     elif action == 'delete':
-                        self.handle_delete(client_socket, command)
+                        self.handle_delete(client_socket, command, client_name)
 
                 except json.JSONDecodeError:
-                    self.log_message("Invalid command format received")
+                    self.log_message(f"Invalid command format received from client {client_name}")
                     break
 
         except Exception as e:
-            self.log_message(f"Error handling client: {str(e)}")
+            self.log_message(f"Error handling client {client_name}: {str(e)}")
+
         finally:
             client_socket.close()
-            self.log_message(f"Connection closed for {address}")
+            self.log_message(f"Connection closed for client [{client_name}] ({address})")
 
-    def handle_upload(self, client_socket, command):
+###################################################################################################################################################################################################################
+
+    def handle_upload(self, client_socket, command, client_name):
         try:
             filename = command['filename']
             if not filename.endswith('.txt'):
                 client_socket.send("ERROR".encode())
                 return
 
-            # Receive file size
             size = int(client_socket.recv(10).strip())
-
-            # Receive file data
             file_path = os.path.join(self.storage_folder, filename)
             received = 0
+            
             with open(file_path, 'wb') as f:
+
                 while received < size:
                     data = client_socket.recv(min(4096, size - received))
                     if not data:
@@ -147,23 +153,27 @@ class FileServerApp:
                     received += len(data)
 
             client_socket.send("SUCCESS".encode())
-            self.log_message(f"File {filename} uploaded successfully")
+            self.log_message(f"File {filename} uploaded by client [{client_name}]")
 
         except Exception as e:
-            self.log_message(f"Upload error: {str(e)}")
+            self.log_message(f"Upload error by client [{client_name}]: {str(e)}")
             client_socket.send("ERROR".encode())
 
-    def handle_list(self, client_socket):
+###################################################################################################################################################################################################################
+
+    def handle_list(self, client_socket, client_name):
         try:
-            files = [f for f in os.listdir(self.storage_folder)
-                     if f.endswith('.txt') and os.path.isfile(os.path.join(self.storage_folder, f))]
+            files = [f for f in os.listdir(self.storage_folder) if f.endswith('.txt') and os.path.isfile(os.path.join(self.storage_folder, f))]
             client_socket.send(json.dumps(files).encode())
-            self.log_message("File list sent to client")
+            self.log_message(f"List of files sent to client [{client_name}]")
+
         except Exception as e:
-            self.log_message(f"List error: {str(e)}")
+            self.log_message(f"List error for client [{client_name}]: {str(e)}")
             client_socket.send(json.dumps([]).encode())
 
-    def handle_download(self, client_socket, command):
+###################################################################################################################################################################################################################
+
+    def handle_download(self, client_socket, command, client_name):
         try:
             filename = command['filename']
             file_path = os.path.join(self.storage_folder, filename)
@@ -172,22 +182,21 @@ class FileServerApp:
                 client_socket.send("ERROR".encode())
                 return
 
-            # Send file size
             file_size = os.path.getsize(file_path)
             client_socket.send(str(file_size).encode().ljust(10))
 
-            # Send file data
             with open(file_path, 'rb') as f:
                 while data := f.read(4096):
                     client_socket.send(data)
 
-            self.log_message(f"File {filename} downloaded successfully")
+            self.log_message(f"File {filename} downloaded by {client_name}")
 
         except Exception as e:
-            self.log_message(f"Download error: {str(e)}")
+            self.log_message(f"Download error by {client_name}: {str(e)}")
             client_socket.send("ERROR".encode())
+###################################################################################################################################################################################################################
 
-    def handle_delete(self, client_socket, command):
+    def handle_delete(self, client_socket, command, client_name):
         try:
             filename = command['filename']
             file_path = os.path.join(self.storage_folder, filename)
@@ -195,10 +204,10 @@ class FileServerApp:
             if os.path.exists(file_path):
                 os.remove(file_path)
                 client_socket.send("SUCCESS".encode())
-                self.log_message(f"File {filename} deleted successfully")
+                self.log_message(f"File {filename} deleted by client [{client_name}]")
             else:
                 client_socket.send("ERROR".encode())
-                self.log_message(f"File {filename} not found")
+                self.log_message(f"File {filename} not found - delete attempted by client [{client_name}]")
 
         except Exception as e:
             self.log_message(f"Delete error: {str(e)}")
