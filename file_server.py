@@ -1,217 +1,215 @@
 import socket
 import threading
 import os
+import json
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 
 
 class FileServerApp:
     def __init__(self, master):
         self.master = master
         self.master.title("File Server")
+        self.master.geometry("600x500")
 
-        # GUI elemanları
-        tk.Label(master, text="Port:").grid(row=0, column=0)
-        self.port_entry = tk.Entry(master)
-        self.port_entry.grid(row=0, column=1)
+        # Server Configuration Frame
+        config_frame = ttk.LabelFrame(master, text="Server Configuration")
+        config_frame.pack(padx=10, pady=5, fill="x")
 
-        self.browse_button = tk.Button(master, text="Browse Storage Folder", command=self.browse_folder)
-        self.browse_button.grid(row=1, column=0, columnspan=2)
+        ttk.Label(config_frame, text="Port:").grid(row=0, column=0, padx=5, pady=5)
+        self.port_entry = ttk.Entry(config_frame)
+        self.port_entry.insert(0, "5000")
+        self.port_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        self.start_button = tk.Button(master, text="Start Server", command=self.start_server)
-        self.start_button.grid(row=2, column=0, columnspan=2)
+        ttk.Label(config_frame, text="Folder:").grid(row=1, column=0, padx=5, pady=5)
+        self.folder_label = ttk.Label(config_frame, text="No folder selected")
+        self.folder_label.grid(row=1, column=1, padx=5, pady=5)
 
-        self.activity_list = tk.Listbox(master, width=80)
-        self.activity_list.grid(row=3, column=0, columnspan=2)
+        self.browse_button = ttk.Button(config_frame, text="Browse", command=self.browse_folder)
+        self.browse_button.grid(row=1, column=2, padx=5, pady=5)
 
-        self.storage_folder = ""
+        self.start_button = ttk.Button(config_frame, text="Start Server", command=self.start_server)
+        self.start_button.grid(row=2, column=0, columnspan=3, pady=10)
+
+        # Log Frame
+        log_frame = ttk.LabelFrame(master, text="Server Log")
+        log_frame.pack(padx=10, pady=5, fill="both", expand=True)
+
+        self.log_text = tk.Text(log_frame, height=20)
+        self.log_text.pack(padx=5, pady=5, fill="both", expand=True)
+
+        # Initialize server variables
         self.server_socket = None
-        self.clients = {}  # İstemci bağlantılarını takip eder
-        self.files = {}  # {filename: owner}
-        self.lock = threading.Lock()  # Thread güvenliği için
+        self.storage_folder = ""
+        self.is_running = False
+
+    def log_message(self, message):
+        self.log_text.insert(tk.END, f"{message}\n")
+        self.log_text.see(tk.END)
 
     def browse_folder(self):
-        """Kullanıcıdan dosya depolama klasörünü seçmesini ister."""
-        self.storage_folder = filedialog.askdirectory()
-        self.activity_list.insert(tk.END, f"Storage folder set to: {self.storage_folder}")
+        folder = filedialog.askdirectory()
+        if folder:
+            self.storage_folder = folder
+            self.folder_label.config(text=folder)
+            self.log_message(f"Storage folder set to: {folder}")
 
     def start_server(self):
-        """Sunucuyu başlatır ve istemci bağlantılarını kabul etmeye hazır hale getirir."""
+        if not self.storage_folder:
+            messagebox.showerror("Error", "Please select a storage folder first")
+            return
+
+        if self.is_running:
+            messagebox.showinfo("Info", "Server is already running")
+            return
+
         try:
             port = int(self.port_entry.get())
-            if not self.storage_folder:
-                messagebox.showerror("Error", "Please set the storage folder")
-                return
-
-            # Sunucu soketini başlatma
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.server_socket.bind(('0.0.0.0', port))
+            self.server_socket.bind(('', port))
             self.server_socket.listen(5)
+            self.is_running = True
 
-            self.activity_list.insert(tk.END, f"Server started on port {port}")
-            self.activity_list.insert(tk.END, f"Storage folder: {self.storage_folder}")
+            self.start_button.config(state='disabled')
+            self.log_message(f"Server started on port {port}")
 
-            # İstemcileri kabul etmek için yeni bir thread başlat
+            # Start accepting clients in a separate thread
             threading.Thread(target=self.accept_clients, daemon=True).start()
 
         except Exception as e:
-            self.activity_list.insert(tk.END, f"Error starting server: {e}")
+            messagebox.showerror("Error", f"Failed to start server: {str(e)}")
+            self.log_message(f"Error: {str(e)}")
 
     def accept_clients(self):
-        """İstemci bağlantılarını kabul eder."""
-        while True:
+        while self.is_running:
             try:
-                client_socket, client_address = self.server_socket.accept()
-                threading.Thread(target=self.handle_client, args=(client_socket, client_address), daemon=True).start()
+                client_socket, address = self.server_socket.accept()
+                threading.Thread(target=self.handle_client, args=(client_socket, address), daemon=True).start()
+                self.log_message(f"New connection from {address}")
             except Exception as e:
-                self.activity_list.insert(tk.END, f"Error accepting client: {e}")
-                break
+                if self.is_running:
+                    self.log_message(f"Error accepting client: {str(e)}")
 
-    def handle_client(self, client_socket, client_address):
-        """Her istemci için işlemleri yönetir."""
+    def handle_client(self, client_socket, address):
         try:
-            # İstemci adını al
+            # Receive client name
             client_name = client_socket.recv(1024).decode()
-            if not client_name:
-                client_socket.send("ERROR: Invalid client name".encode())
-                client_socket.close()
-                return
-
-            with self.lock:
-                if client_name in self.clients:
-                    client_socket.send("ERROR: Client name already in use".encode())
-                    client_socket.close()
-                    return
-                self.clients[client_name] = client_socket
-
-            self.activity_list.insert(tk.END, f"{client_name} connected from {client_address}")
-            client_socket.send("WELCOME".encode())
+            self.log_message(f"Client {client_name} connected from {address}")
 
             while True:
-                command = client_socket.recv(1024).decode()
-                if not command:
-                    break
+                try:
+                    # Receive command
+                    data = client_socket.recv(1024).decode()
+                    if not data:
+                        break
 
-                if command.startswith("UPLOAD"):
-                    self.handle_upload(client_socket, client_name, command)
-                elif command.startswith("LIST"):
-                    self.handle_list(client_socket)
-                elif command.startswith("DOWNLOAD"):
-                    self.handle_download(client_socket, command)
-                elif command.startswith("DELETE"):
-                    self.handle_delete(client_socket, client_name, command)
-                elif command == "DISCONNECT":
+                    command = json.loads(data)
+                    action = command.get('action')
+
+                    if action == 'upload':
+                        self.handle_upload(client_socket, command)
+                    elif action == 'list':
+                        self.handle_list(client_socket)
+                    elif action == 'download':
+                        self.handle_download(client_socket, command)
+                    elif action == 'delete':
+                        self.handle_delete(client_socket, command)
+
+                except json.JSONDecodeError:
+                    self.log_message("Invalid command format received")
                     break
 
         except Exception as e:
-            self.activity_list.insert(tk.END, f"Error with client {client_address}: {e}")
+            self.log_message(f"Error handling client: {str(e)}")
         finally:
             client_socket.close()
-            with self.lock:
-                if client_name in self.clients:
-                    del self.clients[client_name]
-            self.activity_list.insert(tk.END, f"{client_name} disconnected")
+            self.log_message(f"Connection closed for {address}")
 
-    def handle_upload(self, client_socket, client_name, command):
-        """Dosya yükleme işlemini yönetir."""
+    def handle_upload(self, client_socket, command):
         try:
-            _, filename = command.split()
-            filepath = os.path.join(self.storage_folder, f"{client_name}_{filename}")
-            filesize = int(client_socket.recv(1024).decode())
-            client_socket.send("READY".encode())
+            filename = command['filename']
+            if not filename.endswith('.txt'):
+                client_socket.send("ERROR".encode())
+                return
 
-            with open(filepath, "wb") as f:
-                remaining = filesize
-                while remaining > 0:
-                    chunk = client_socket.recv(min(4096, remaining))
-                    if not chunk:
+            # Receive file size
+            size = int(client_socket.recv(10).strip())
+
+            # Receive file data
+            file_path = os.path.join(self.storage_folder, filename)
+            received = 0
+            with open(file_path, 'wb') as f:
+                while received < size:
+                    data = client_socket.recv(min(4096, size - received))
+                    if not data:
                         break
-                    f.write(chunk)
-                    remaining -= len(chunk)
+                    f.write(data)
+                    received += len(data)
 
-            with self.lock:
-                self.files[f"{client_name}_{filename}"] = client_name
-            self.activity_list.insert(tk.END, f"{client_name} uploaded {filename}")
-            client_socket.send("UPLOAD_SUCCESS".encode())
+            client_socket.send("SUCCESS".encode())
+            self.log_message(f"File {filename} uploaded successfully")
 
         except Exception as e:
-            self.activity_list.insert(tk.END, f"Error during upload: {e}")
-            client_socket.send(f"UPLOAD_FAILED: {e}".encode())
+            self.log_message(f"Upload error: {str(e)}")
+            client_socket.send("ERROR".encode())
 
     def handle_list(self, client_socket):
-        """Sunucudaki mevcut dosyaları listeler."""
         try:
-            # Mevcut dosyaların listesini oluştur
-            with self.lock:
-                if not self.files:
-                    file_list = "No files available"
-                else:
-                    file_list = "\n".join([f"{filename} (owner: {owner})" for filename, owner in self.files.items()])
-
-            # Listeyi istemciye gönder
-            client_socket.send(file_list.encode())
-            self.activity_list.insert(tk.END, "Sent file list to client")
-
+            files = [f for f in os.listdir(self.storage_folder)
+                     if f.endswith('.txt') and os.path.isfile(os.path.join(self.storage_folder, f))]
+            client_socket.send(json.dumps(files).encode())
+            self.log_message("File list sent to client")
         except Exception as e:
-            self.activity_list.insert(tk.END, f"Error sending file list: {e}")
-            client_socket.send(f"LIST_FAILED: {e}".encode())
+            self.log_message(f"List error: {str(e)}")
+            client_socket.send(json.dumps([]).encode())
 
     def handle_download(self, client_socket, command):
-        """Dosya indirme işlemini yönetir."""
         try:
-            _, filename = command.split()
-            filepath = os.path.join(self.storage_folder, filename)
+            filename = command['filename']
+            file_path = os.path.join(self.storage_folder, filename)
 
-            # Dosyanın varlığını kontrol et
-            if not os.path.exists(filepath):
-                client_socket.send("FILE_NOT_FOUND".encode())
-                self.activity_list.insert(tk.END, f"File not found: {filename}")
+            if not os.path.exists(file_path):
+                client_socket.send("ERROR".encode())
                 return
 
-            # Dosya boyutunu gönder
-            filesize = os.path.getsize(filepath)
-            client_socket.send(str(filesize).encode())
+            # Send file size
+            file_size = os.path.getsize(file_path)
+            client_socket.send(str(file_size).encode().ljust(10))
 
-            # İstemciden READY bekle
-            ready = client_socket.recv(1024).decode()
-            if ready != "READY":
-                self.activity_list.insert(tk.END, f"Client not ready to receive file: {filename}")
-                return
+            # Send file data
+            with open(file_path, 'rb') as f:
+                while data := f.read(4096):
+                    client_socket.send(data)
 
-            # Dosya içeriğini gönder
-            with open(filepath, "rb") as f:
-                while chunk := f.read(4096):  # 4096 byte'lık parçalara bölerek gönder
-                    client_socket.sendall(chunk)
-
-            self.activity_list.insert(tk.END, f"File {filename} sent successfully")
+            self.log_message(f"File {filename} downloaded successfully")
 
         except Exception as e:
-            self.activity_list.insert(tk.END, f"Error during download: {e}")
-            client_socket.send(f"DOWNLOAD_FAILED: {e}".encode())
+            self.log_message(f"Download error: {str(e)}")
+            client_socket.send("ERROR".encode())
 
-    def handle_delete(self, client_socket, client_name, command):
-        """Dosya silme işlemini yönetir."""
+    def handle_delete(self, client_socket, command):
         try:
-            _, filename = command.split()
-            filepath = os.path.join(self.storage_folder, f"{client_name}_{filename}")
-            if not os.path.exists(filepath):
-                client_socket.send("FILE_NOT_FOUND".encode())
-                self.activity_list.insert(tk.END, f"Failed to delete: {filename} (File not found)")
-                return
+            filename = command['filename']
+            file_path = os.path.join(self.storage_folder, filename)
 
-            os.remove(filepath)
-            with self.lock:
-                del self.files[f"{client_name}_{filename}"]
-            client_socket.send("DELETE_SUCCESS".encode())
-            self.activity_list.insert(tk.END, f"{client_name} deleted {filename}")
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                client_socket.send("SUCCESS".encode())
+                self.log_message(f"File {filename} deleted successfully")
+            else:
+                client_socket.send("ERROR".encode())
+                self.log_message(f"File {filename} not found")
 
         except Exception as e:
-            self.activity_list.insert(tk.END, f"Error during delete: {e}")
-            client_socket.send(f"DELETE_FAILED: {e}".encode())
+            self.log_message(f"Delete error: {str(e)}")
+            client_socket.send("ERROR".encode())
 
 
-if __name__ == "__main__":
+def main():
     root = tk.Tk()
     app = FileServerApp(root)
     root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
