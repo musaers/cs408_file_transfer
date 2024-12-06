@@ -3,7 +3,6 @@ import tkinter as tk
 from tkinter import filedialog, simpledialog, messagebox, ttk
 import os
 import json
-import threading
 
 
 class FileClientApp:
@@ -92,32 +91,10 @@ class FileClientApp:
             self.disconnect_button.config(state = 'normal')
 
             self.log_message(f"Connected to server at {host}:{port}")
-            threading.Thread(target=self.listen_for_server_end, daemon=True).start()      #oopen a thread to listen if server ends, then if it ends a server message will be shown in the box
-
+            
         except Exception as e:
             messagebox.showerror("Error", f"Connection failed: {str(e)}")
             self.log_message(f"Connection error: {str(e)}")
-
-###################################################################################################################################################################################################################
-
-    def listen_for_server_end(self):
-        while self.socket:
-            try:
-                data = self.socket.recv(1024).decode()
-                if not data:
-                    break
-                message = json.loads(data)
-                if message.get("action") == "server_ended":
-                    self.master.after(0, self.handle_server_end)
-                    break
-            except:
-                break
-    
-    def handle_server_end(self):
-        self.log_message(f"Server has stopped...")         #just show a message and disconnect
-        self.socket.close()
-        self.socket= None            
-        
 
 ###################################################################################################################################################################################################################
 
@@ -200,19 +177,12 @@ class FileClientApp:
             self.socket.send(json.dumps({"action": "list"}).encode())
             response = self.socket.recv(4096).decode()
             files = json.loads(response)
-
-            # Show files in a new window
-            top = tk.Toplevel(self.master)
-            top.title("Server Files")
-            top.geometry("300x400")
-
-            listbox = tk.Listbox(top)
-            listbox.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
-
+            
+            self.log_message("\nAvailable files:")
             for file in files:
-                listbox.insert(tk.END, file)
-
-            self.log_message("Retrieved file list from server")
+                self.log_message(f"- {file}")
+            
+            self.log_message("\nRetrieved file list from server")
 
         except Exception as e:
             self.log_message(f"List error: {str(e)}")
